@@ -2,6 +2,8 @@
 
 A home-screen web app for Singapore bus arrivals. Plain HTML, CSS and JavaScript, with no build step and no server.
 
+**Live app:** https://qilin1983.github.io/bus-app/
+
 ## Run it
 Opening `index.html` directly works for trying it out, but installing and offline mode
 need the page served over http(s). From this folder:
