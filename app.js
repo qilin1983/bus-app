@@ -296,13 +296,15 @@ function findFavourite(stopCode) {
 // Add a new favourite, or update the one already saved for this stop.
 function saveFavourite(stopCode, { icon, label, services: chosen }) {
   const favourites = loadFavourites();
+  const index = favourites.findIndex((fav) => fav.stop === stopCode);
+  // No bus choice made (null): keep the buses already saved, or show every bus if new
+  const keptServices = index >= 0 ? favourites[index].services : [];
   const favourite = {
     stop: stopCode,
     icon: ICONS[icon] ? icon : 'home',
     label: label.trim() || ICONS[icon].name,
-    services: chosen,
+    services: chosen === null ? keptServices : chosen,
   };
-  const index = favourites.findIndex((fav) => fav.stop === stopCode);
   if (index >= 0) {
     favourites[index] = favourite;
   } else {
@@ -454,7 +456,11 @@ async function renderHome(id, isRefresh) {
     return;
   }
 
-  if (!isRefresh) statusEl.textContent = 'Loading your favourites…';
+  if (!isRefresh) {
+    // Clear the previous screen straight away, so its buttons can't be tapped while we load
+    viewEl.innerHTML = '';
+    statusEl.textContent = 'Loading your favourites…';
+  }
   await dataReady; // for stop names
 
   // Fetch every favourite stop at the same time. If one fails, the others still show.
@@ -504,8 +510,15 @@ function favouriteCard(fav, arrivals) {
 // Save / edit favourite screen (step 4)
 // ---------------------------------------------------------------------------
 
-function showFavouriteForm(stopCode, highlightNo) {
-  changeScreen();
+async function showFavouriteForm(stopCode, highlightNo) {
+  const id = changeScreen();
+  viewEl.innerHTML = '';
+  statusEl.textContent = 'Loading…';
+
+  // The list of buses at this stop comes from the network data, so wait for it
+  await dataReady;
+  if (id !== screenId) return; // the user has moved on to another screen
+
   const existing = findFavourite(stopCode);
   const atStop = servicesAtStop(stopCode);
 
@@ -532,7 +545,9 @@ function showFavouriteForm(stopCode, highlightNo) {
           <input type="checkbox" name="service" value="${escapeHtml(no)}"${ticked.includes(no) ? ' checked' : ''}>
           ${escapeHtml(no)}
         </label>`).join('')
-    : '<p class="card-note">Bus list unavailable, so every bus at this stop will be shown.</p>';
+    : `<p class="card-note">Bus list unavailable. ${existing
+        ? 'Your saved buses will be kept.'
+        : 'Every bus at this stop will be shown.'}</p>`;
 
   viewEl.innerHTML = `
     <h2>${existing ? 'Edit favourite' : 'Save as favourite'}</h2>
@@ -564,10 +579,13 @@ function showFavouriteForm(stopCode, highlightNo) {
 }
 
 // Read what the user picked in the favourite form.
+// `services` is null when there were no bus checkboxes (bus list unavailable),
+// meaning "keep whatever was saved before".
 function readFavouriteForm(formEl) {
   const icon = formEl.querySelector('input[name="icon"]:checked').value;
   const label = formEl.querySelector('input[name="label"]').value;
   const boxes = [...formEl.querySelectorAll('input[name="service"]')];
+  if (boxes.length === 0) return { icon, label, services: null };
   let chosen = boxes.filter((box) => box.checked).map((box) => box.value);
   // All ticked means "every bus", so new services at this stop show up automatically too
   if (chosen.length === boxes.length) chosen = [];
@@ -674,9 +692,13 @@ async function handleSearch(query) {
     return;
   }
 
-  // The other two kinds of search need the network data
+  // The other two kinds of search need the network data.
+  // Switch screens first, so if the user taps elsewhere while it loads, we don't jump back here.
+  const id = changeScreen();
+  viewEl.innerHTML = '';
   statusEl.textContent = 'Loading bus data…';
   await dataReady;
+  if (id !== screenId) return; // the user has moved on to another screen
   if (dataError) {
     statusEl.textContent = 'Could not load bus stop data, so only 5-digit stop codes work right now. Try reloading the page.';
     return;
