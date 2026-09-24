@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bus Arrivals</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <h1>Bus Arrivals</h1>
+
+    <!-- One search box: a 5-digit stop code, a bus number, or part of a stop/road name -->
+    <form id="search-form">
+      <label for="search">Stop code, bus number or stop name</label>
+      <div class="row">
+        <input id="search" type="search" autocomplete="off"
+               placeholder="e.g. 83139, 15 or Marine Pde" required>
+        <button type="submit">Search</button>
+      </div>
+    </form>
+
+    <div class="row nav">
+      <button id="home" class="secondary" type="button">★ Favourites</button>
+      <button id="nearby" class="secondary" type="button">Stops near me</button>
+    </div>
+
+    <!-- Status messages (loading, errors) and the current view go here -->
+    <p id="status" role="status"></p>
+    <div id="view"></div>
+  </main>
+
+  <footer>
+    Data: <a href="https://arrivelah2.busrouter.sg/">arrivelah</a> /
+    <a href="https://busrouter.sg/">BusRouter SG</a>, from LTA DataMall
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,252 @@
+/* Colours are defined once here, then reused below */
+:root {
+  --bg: #f6f7f9;
+  --card: #ffffff;
+  --text: #1a1d21;
+  --muted: #6b7280;
+  --accent: #0b6bcb;
+  --border: #e3e6ea;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111317;
+    --card: #1b1e24;
+    --text: #eef0f3;
+    --muted: #9aa1ab;
+    --accent: #5aa9ff;
+    --border: #2b2f36;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+main {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+h1 { font-size: 1.5rem; margin: 8px 0 16px; }
+
+label { display: block; font-size: 0.9rem; color: var(--muted); margin-bottom: 4px; }
+
+.row { display: flex; gap: 8px; }
+
+input {
+  flex: 1;
+  min-width: 0;
+  font-size: 1.1rem;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--text);
+}
+
+button {
+  font-size: 1rem;
+  padding: 10px 16px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+}
+
+#status { color: var(--muted); min-height: 1.2em; }
+
+/* "Stops near me" and "Back" are quieter than the main Search button */
+button.secondary, button.back, button.tab {
+  background: var(--card);
+  color: var(--accent);
+  border: 1px solid var(--border);
+}
+button.secondary { width: 100%; margin-top: 8px; }
+.nav button { flex: 1; }
+button.danger {
+  width: 100%;
+  margin-top: 16px;
+  background: transparent;
+  color: #d64545;
+  border: 1px solid #d64545;
+}
+
+/* Favourite cards on the home screen */
+.fav-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 8px;
+  margin-bottom: 12px;
+}
+.fav-card .service { border: 0; margin: 0; padding: 8px 4px; border-top: 1px solid var(--border); border-radius: 0; }
+.fav-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  color: var(--text);
+  padding: 6px 4px 10px;
+}
+.fav-icon { font-size: 1.6rem; }
+.fav-label { display: block; font-weight: 700; font-size: 1.05rem; }
+.card-note { color: var(--muted); font-size: 0.85rem; margin: 4px; }
+.star { color: #e0a100; margin-left: 6px; }
+
+.empty {
+  text-align: center;
+  color: var(--muted);
+  background: var(--card);
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  padding: 20px 16px;
+  margin-top: 16px;
+}
+
+/* Save / edit favourite form */
+.fav-form fieldset { border: 0; padding: 0; margin: 0 0 16px; }
+.fav-form legend { font-size: 0.9rem; color: var(--muted); margin-bottom: 6px; }
+.fav-form #fav-label { width: 100%; margin-bottom: 16px; }
+.choices { display: flex; flex-wrap: wrap; gap: 8px; }
+.icon-choice, .bus-choice {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--text);
+  font-size: 0.95rem;
+  margin: 0;
+  cursor: pointer;
+}
+/* Hide the round radio/tick box; the whole pill shows the choice instead */
+.icon-choice input, .bus-choice input { position: absolute; opacity: 0; pointer-events: none; }
+.icon-choice:has(input:checked), .bus-choice:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+.icon-choice:has(input:focus-visible), .bus-choice:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.hint { font-size: 0.8rem; color: var(--muted); margin: 6px 0 0; }
+.fav-form .row button { flex: 1; margin-top: 0; }
+button.back { padding: 6px 12px; font-size: 0.9rem; margin-top: 4px; }
+
+h2 { font-size: 1.25rem; margin: 12px 0 2px; }
+.subtitle { color: var(--muted); margin: 0 0 12px; font-size: 0.9rem; }
+
+/* Direction switcher on a bus route screen */
+.tabs { display: flex; gap: 8px; margin-bottom: 12px; }
+.tabs .tab { flex: 1; font-size: 0.85rem; padding: 8px; }
+.tabs .tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+/* All lists (arrivals, stops) share the same card look */
+.list { list-style: none; padding: 0; margin: 0; }
+
+/* A tappable stop in a list */
+.stop-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: var(--card);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+.stop-item:hover { border-color: var(--accent); }
+.stop-name { display: block; font-weight: 600; }
+.stop-meta { display: block; font-size: 0.8rem; color: var(--muted); margin-top: 2px; }
+
+/* Each bus service is one card */
+
+.service {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  margin-bottom: 8px;
+}
+
+/* The bus you picked from a route list stands out */
+.service.highlight { border: 2px solid var(--accent); }
+
+/* Bus number with the last-bus badge underneath */
+.service-info { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+
+.badge {
+  font-size: 0.7rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.badge-warn {
+  color: #fff;
+  background: #c77700;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+.badge-off { color: #d64545; }
+
+.service-no {
+  font-size: 1.4rem;
+  font-weight: 700;
+  width: 4ch;
+}
+
+.etas { display: flex; gap: 16px; flex: 1; justify-content: flex-end; }
+
+.eta { text-align: center; min-width: 3ch; }
+.eta strong { display: block; font-size: 1.2rem; }
+.eta small { color: var(--muted); font-size: 0.75rem; }
+
+/* The first (soonest) bus is highlighted */
+.eta:first-child strong { color: var(--accent); }
+
+/* Crowd dots: green = seats, amber = standing, red = limited standing */
+.dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+.load-seats    { background: #1f9d55; }
+.load-standing { background: #e0a100; }
+.load-full     { background: #d64545; }
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin: 12px 0 0;
+}
+
+footer {
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--muted);
+  padding: 24px 16px;
+}
+footer a { color: inherit; }
