@@ -81,7 +81,9 @@ button.secondary, button.back, button.tab {
   border: 1px solid var(--border);
 }
 button.secondary { width: 100%; margin-top: 8px; }
-.nav button { flex: 1; }
+/* Three buttons share the top bar, so keep each label on one line */
+.nav button { flex: 1; padding: 10px 6px; font-size: 0.9rem; white-space: nowrap; }
+button[data-trip-swap] { margin: 0 0 8px; }
 button.fav-toggle { margin: 0 0 12px; }
 button.danger {
   width: 100%;
@@ -89,6 +91,59 @@ button.danger {
   background: transparent;
   color: #d64545;
   border: 1px solid #d64545;
+}
+
+/* Trip planner (step 7) */
+.trip-field {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 8px;
+}
+.trip-label { font-size: 0.8rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.trip-value { font-weight: 700; margin: 2px 0 10px; }
+.trip-field .choices { margin-bottom: 10px; }
+.trip-field .list { margin-top: 10px; }
+
+/* Small pill buttons: "Near me" and favourites as quick picks */
+button.chip {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 0.9rem;
+}
+
+button.trip-go { width: 100%; margin-top: 8px; }
+button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.trip-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  text-align: left;
+  background: var(--card);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  margin-bottom: 8px;
+}
+.trip-card:hover { border-color: var(--accent); }
+.trip-top { display: flex; justify-content: space-between; align-items: baseline; }
+.trip-arrive { font-weight: 700; font-size: 1.1rem; color: var(--accent); }
+.trip-line { font-size: 0.9rem; color: var(--muted); }
+.trip-line strong { color: var(--text); }
+.live {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #1f9d55;
+  border: 1px solid #1f9d55;
+  border-radius: 4px;
+  padding: 0 4px;
 }
 
 /* Favourite cards on the home screen */

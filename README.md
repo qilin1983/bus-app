@@ -30,7 +30,7 @@ Live arrival times always need a connection.
 - [x] 4. Favourites: Home / Work / Play icon, custom name, chosen buses, live times on home screen (`localStorage`)
 - [x] 5. First/last-bus badges with a warning 30 min before the last bus (`firstlast.min.json`)
 - [x] 6. Installable app: manifest, icons, offline support (`sw.js`), Install button
-- [ ] 7. Trip search: direct buses, live ride time
+- [x] 7. Plan trip: direct buses from a stop, "near me" or a favourite, with live ride times (GPS-matched) and arrival time
 - [ ] 8. On-board mode
 - [ ] 9. Multi-transfer routing via OneMap (needs a serverless function)
 

@@ -727,34 +727,47 @@ async function handleSearch(query) {
 
 const NEARBY_COUNT = 8;
 
-function findNearby() {
-  if (!navigator.geolocation) {
-    statusEl.textContent = 'Your browser can\'t share your location. Try searching by name instead.';
-    return;
-  }
+// Ask the browser for the user's location. Returns a Promise, so it can be used with `await`.
+function getPosition() {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error('unsupported'));
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(resolve, reject,
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
+  });
+}
 
+function locationErrorMessage(error) {
+  if (error.message === 'unsupported') {
+    return 'Your browser can\'t share your location. Try searching by name instead.';
+  }
+  return error.code === 1 // 1 = permission denied
+    ? 'Location access is blocked. Allow it for this page in your browser settings, or search by name instead.'
+    : 'Couldn\'t get your location. Try again, or search by name instead.';
+}
+
+async function findNearby() {
   const id = changeScreen();
   viewEl.innerHTML = '';
   statusEl.textContent = 'Finding your location…';
 
-  navigator.geolocation.getCurrentPosition(
-    async (position) => {
-      await dataReady;
-      if (id !== screenId) return;
-      if (dataError) {
-        statusEl.textContent = 'Could not load bus stop data. Try reloading the page.';
-        return;
-      }
-      showNearby(position.coords.latitude, position.coords.longitude);
-    },
-    (error) => {
-      if (id !== screenId) return;
-      statusEl.textContent = error.code === error.PERMISSION_DENIED
-        ? 'Location access is blocked. Allow it for this page in your browser settings, or search by name instead.'
-        : 'Couldn\'t get your location. Try again, or search by name instead.';
-    },
-    { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
-  );
+  let position;
+  try {
+    position = await getPosition();
+  } catch (error) {
+    if (id === screenId) statusEl.textContent = locationErrorMessage(error);
+    return;
+  }
+
+  await dataReady;
+  if (id !== screenId) return;
+  if (dataError) {
+    statusEl.textContent = 'Could not load bus stop data. Try reloading the page.';
+    return;
+  }
+  showNearby(position.coords.latitude, position.coords.longitude);
 }
 
 function showNearby(lat, lng) {
@@ -772,6 +785,383 @@ function showNearby(lat, lng) {
     ? 'You seem to be far from any Singapore bus stop. These are the closest ones.'
     : 'Nearest stops. Tap one to see arrivals.';
   lastList = () => showNearby(lat, lng);
+}
+
+// ---------------------------------------------------------------------------
+// Trip search: direct buses from A to B, with live ride times (step 7)
+// ---------------------------------------------------------------------------
+
+// Measured from live data: buses cover about 240 m of straight-line stop-to-stop distance
+// per minute, including time spent at stops. Used when we can't measure the ride live.
+const BUS_METRES_PER_MIN = 240;
+// Walking: about 80 m a minute, plus a bit extra because streets aren't straight lines
+const WALK_METRES_PER_MIN = 80;
+const WALK_DETOUR = 1.25;
+// From "near me", consider any stop within this distance
+const ORIGIN_RADIUS = 400;
+// Also accept getting off at a stop this close to the destination (e.g. across the road)
+const DESTINATION_RADIUS = 300;
+const MAX_TRIP_OPTIONS = 8;
+
+function walkMinutes(metres) {
+  return Math.ceil((metres * WALK_DETOUR) / WALK_METRES_PER_MIN);
+}
+
+// "14:52", matching the 24-hour times in the last-bus badges
+function clockTime(ms) {
+  return new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+}
+
+// The trip being planned.
+//   from: { kind: 'near', lat, lng } for "my location", or { kind: 'stop', code }
+//   to:   a stop code
+let trip = { from: null, to: null };
+
+function tripFromText() {
+  if (!trip.from) return 'Not set';
+  return trip.from.kind === 'near' ? 'Your location' : `${stopName(trip.from.code)} (${trip.from.code})`;
+}
+
+function tripToText() {
+  return trip.to ? `${stopName(trip.to)} (${trip.to})` : 'Not set';
+}
+
+// All stops within `radius` metres of a point, closest first, with their distance
+function stopsWithin(lat, lng, radius) {
+  return Object.values(stops)
+    .map((stop) => ({ code: stop.code, metres: distanceMetres(lat, lng, stop.lat, stop.lng) }))
+    .filter((s) => s.metres <= radius)
+    .sort((a, b) => a.metres - b.metres);
+}
+
+// Where the user could get on: one chosen stop, or every stop within walking distance
+function boardingStops() {
+  if (trip.from.kind === 'stop') return [{ code: trip.from.code, metres: 0 }];
+  return stopsWithin(trip.from.lat, trip.from.lng, ORIGIN_RADIUS).slice(0, 12);
+}
+
+// Where the user could get off: the destination stop (0 m) and any stops close to it
+function alightingStops() {
+  const dest = stops[trip.to];
+  return stopsWithin(dest.lat, dest.lng, DESTINATION_RADIUS).slice(0, 8);
+}
+
+// Straight-line distance along a route, from stop number `from` to stop number `to`
+function routeMetres(route, from, to) {
+  let metres = 0;
+  for (let k = from; k < to; k++) {
+    const a = stops[route[k]];
+    const b = stops[route[k + 1]];
+    if (a && b) metres += distanceMetres(a.lat, a.lng, b.lat, b.lng);
+  }
+  return metres;
+}
+
+// Find every bus service that goes from one of the boarding stops to one of the alighting
+// stops without changing buses. For each service and direction we keep the best pair of stops.
+function findDirectOptions(boarding, alighting) {
+  const walkTo = new Map(boarding.map((s) => [s.code, s.metres]));
+  const walkFrom = new Map(alighting.map((s) => [s.code, s.metres]));
+  const options = [];
+
+  for (const [no, service] of Object.entries(services)) {
+    service.routes.forEach((route, direction) => {
+      let best = null;
+
+      route.forEach((boardCode, i) => {
+        if (!walkTo.has(boardCode)) return;
+        // Look at every later stop on the route where we could get off
+        for (let j = i + 1; j < route.length; j++) {
+          const alightCode = route[j];
+          if (!walkFrom.has(alightCode) || alightCode === boardCode) continue;
+
+          const estRide = routeMetres(route, i, j) / BUS_METRES_PER_MIN;
+          const estimate = walkMinutes(walkTo.get(boardCode)) + estRide + walkMinutes(walkFrom.get(alightCode));
+          if (!best || estimate < best.estimate) {
+            best = {
+              no, board: boardCode, alight: alightCode, stopCount: j - i,
+              walkTo: walkTo.get(boardCode), walkFrom: walkFrom.get(alightCode),
+              estRide, estimate,
+            };
+          }
+        }
+      });
+
+      if (best) options.push(best);
+    });
+  }
+
+  return options.sort((a, b) => a.estimate - b.estimate);
+}
+
+// False if the timetable says this bus doesn't run at this stop today, or has finished for
+// the night. True if it's running, or if we don't know (timetable not loaded yet).
+function runsNow(stopCode, serviceNo, now = new Date()) {
+  const times = todaysTimes(stopCode, serviceNo, now);
+  if (!times) return true;
+  if (times.none) return false;
+  return serviceDayNow(now).minutes <= timeToMinutes(times.last);
+}
+
+function busesOf(service) {
+  return service ? [service.next, service.subsequent, service.next3].filter(Boolean) : [];
+}
+
+// The arrival API has no bus ID, but a tracked bus reports the same GPS position in every
+// stop's data, so matching positions tells us it's the same bus.
+function sameBus(a, b) {
+  return a.monitored === 1 && b.monitored === 1 && a.lat !== 0 && a.lat === b.lat && a.lng === b.lng;
+}
+
+// Fill in live details for each option: the first bus the user can walk to in time,
+// the ride time (measured live if possible), and the arrival time at the destination.
+async function addLiveTimes(options) {
+  // Download arrivals for every stop involved, all at the same time
+  const codes = [...new Set(options.flatMap((o) => [o.board, o.alight]))];
+  const results = await Promise.all(codes.map((code) =>
+    fetchArrivals(code).then((arrivals) => [code, arrivals]).catch(() => [code, null])
+  ));
+  const arrivalsAt = Object.fromEntries(results);
+
+  for (const option of options) {
+    const atBoard = arrivalsAt[option.board] && arrivalsAt[option.board].find((s) => s.no === option.no);
+    const atAlight = arrivalsAt[option.alight] && arrivalsAt[option.alight].find((s) => s.no === option.no);
+    const boardBuses = busesOf(atBoard);
+    const alightBuses = busesOf(atAlight);
+
+    // The first bus that arrives after the user can walk to the stop
+    const walk = walkMinutes(option.walkTo);
+    option.boardBus = boardBuses.find((bus) => bus.duration_ms / 60000 >= walk) || null;
+    option.liveUnavailable = arrivalsAt[option.board] === null;
+
+    // Live ride time: the same bus's arrival time at the get-off stop minus at the boarding stop
+    option.liveRide = null;
+    for (const bus of [option.boardBus, ...boardBuses].filter(Boolean)) {
+      const later = alightBuses.find((b) => sameBus(bus, b) && Date.parse(b.time) > Date.parse(bus.time));
+      if (later) {
+        option.liveRide = (Date.parse(later.time) - Date.parse(bus.time)) / 60000;
+        break;
+      }
+    }
+    option.ride = option.liveRide !== null ? option.liveRide : option.estRide;
+
+    option.arriveAt = option.boardBus
+      ? Date.parse(option.boardBus.time) + (option.ride + walkMinutes(option.walkFrom)) * 60000
+      : null;
+  }
+
+  // Soonest arrival first; options with no catchable bus go last
+  options.sort((a, b) => (a.arriveAt || Infinity) - (b.arriveAt || Infinity) || a.estimate - b.estimate);
+}
+
+function tripCard(option) {
+  const rideText = option.liveRide !== null
+    ? `Ride ${Math.round(option.ride)} min <span class="live">live</span>`
+    : `Ride ~${Math.round(option.ride)} min`;
+
+  let when;
+  if (option.boardBus) {
+    const mins = minutesAway(option.boardBus);
+    when = mins === 'Arr' ? 'Bus arriving now' : `Bus in ${mins} min`;
+  } else if (option.liveUnavailable) {
+    when = 'Live times unavailable';
+  } else {
+    when = 'No bus you can catch soon';
+  }
+
+  const walkStart = option.walkTo > 0 ? ` · ${walkMinutes(option.walkTo)} min walk` : '';
+  const walkEnd = option.walkFrom > 0 ? `, then ${walkMinutes(option.walkFrom)} min walk` : '';
+
+  return `
+    <li>
+      <button class="trip-card" type="button" data-stop="${option.board}" data-service="${escapeHtml(option.no)}">
+        <span class="trip-top">
+          <span class="service-no">${escapeHtml(option.no)}</span>
+          <span class="trip-arrive">${option.arriveAt ? 'Arrive ' + clockTime(option.arriveAt) : '–'}</span>
+        </span>
+        <span class="trip-line"><strong>${when}</strong>${crowdText(option.boardBus)} at
+          ${escapeHtml(stopName(option.board))}${walkStart}</span>
+        <span class="trip-line">${rideText} · ${option.stopCount} stop${option.stopCount === 1 ? '' : 's'}
+          to ${escapeHtml(stopName(option.alight))}${walkEnd}</span>
+        ${lastBusBadge(option.board, option.no)}
+      </button>
+    </li>`;
+}
+
+// The crowd dot for the bus the user would catch (nothing if there's no bus)
+function crowdText(bus) {
+  return bus ? ' ' + crowdDot(bus) : '';
+}
+
+// Open the planner from the top bar. Stop search needs the network data, so wait for it.
+async function openTripPlanner() {
+  const id = changeScreen();
+  viewEl.innerHTML = '';
+  statusEl.textContent = 'Loading bus data…';
+  await dataReady;
+  if (id !== screenId) return;
+  if (dataError) {
+    statusEl.textContent = 'Could not load bus data. Try reloading the page.';
+    return;
+  }
+  showTripPlanner();
+}
+
+// --- The planner screen: choose From and To ---
+
+// `picker` is set while the user is searching for a stop: { field: 'from' | 'to', query }
+function showTripPlanner(picker = null) {
+  changeScreen();
+  const favourites = loadFavourites();
+
+  // Quick picks: the user's favourites, e.g. "🏠 Home" → "💼 Work"
+  const favChips = (field) => favourites.map((fav) => `
+    <button class="chip" type="button" data-trip-pick="${field}" data-code="${fav.stop}">
+      ${(ICONS[fav.icon] || ICONS.home).emoji} ${escapeHtml(fav.label)}
+    </button>`).join('');
+
+  // Search results for whichever field is being searched
+  const pickerResults = (field) => {
+    if (!picker || picker.field !== field) return '';
+    const matches = /^\d{5}$/.test(picker.query) && stops[picker.query]
+      ? [stops[picker.query]]
+      : searchStops(picker.query).slice(0, 10);
+    if (matches.length === 0) return `<p class="card-note">No stops match "${escapeHtml(picker.query)}".</p>`;
+    return `<ul class="list">${matches.map((s) => `
+      <li>
+        <button class="stop-item" type="button" data-trip-pick="${field}" data-code="${s.code}">
+          <span class="stop-name">${escapeHtml(s.name)}</span>
+          <span class="stop-meta">${s.code} · ${escapeHtml(s.road)}</span>
+        </button>
+      </li>`).join('')}</ul>`;
+  };
+
+  const searchBox = (field) => `
+    <form class="trip-search" data-field="${field}">
+      <div class="row">
+        <input name="q" type="search" autocomplete="off" placeholder="Search for a stop"
+               value="${picker && picker.field === field ? escapeHtml(picker.query) : ''}">
+        <button type="submit">Find</button>
+      </div>
+    </form>`;
+
+  const canSwap = trip.from && trip.from.kind === 'stop' && trip.to;
+
+  viewEl.innerHTML = `
+    <h2>Plan a trip</h2>
+    <p class="subtitle">Direct buses only (no changing buses yet).</p>
+
+    <section class="trip-field">
+      <div class="trip-label">From</div>
+      <div class="trip-value">${escapeHtml(tripFromText())}</div>
+      <div class="choices">
+        <button class="chip" type="button" data-trip-near>📍 Near me</button>
+        ${favChips('from')}
+      </div>
+      ${searchBox('from')}
+      ${pickerResults('from')}
+    </section>
+
+    ${canSwap ? '<button class="back" type="button" data-trip-swap>⇅ Swap</button>' : ''}
+
+    <section class="trip-field">
+      <div class="trip-label">To</div>
+      <div class="trip-value">${escapeHtml(tripToText())}</div>
+      <div class="choices">${favChips('to')}</div>
+      ${searchBox('to')}
+      ${pickerResults('to')}
+    </section>
+
+    <button class="trip-go" type="button" data-trip-go${trip.from && trip.to ? '' : ' disabled'}>
+      Find buses
+    </button>`;
+  statusEl.textContent = '';
+}
+
+// Picking the destination (with a start already chosen) runs the search straight away.
+// Picking the start stays on the planner, so both ends can be changed without a wasted search;
+// the user taps "Find buses" if they only wanted to change the start.
+function afterTripChange(field) {
+  if (field === 'to' && trip.from) {
+    planTrip();
+  } else {
+    showTripPlanner();
+  }
+}
+
+async function useMyLocationForTrip() {
+  statusEl.textContent = 'Finding your location…';
+  try {
+    const position = await getPosition();
+    trip.from = { kind: 'near', lat: position.coords.latitude, lng: position.coords.longitude };
+    afterTripChange('from');
+  } catch (error) {
+    statusEl.textContent = locationErrorMessage(error);
+  }
+}
+
+// --- The results screen ---
+
+function planTrip() {
+  const id = changeScreen(() => renderTrip(id, true));
+  backTo = null;
+  lastList = planTrip;
+  renderTrip(id, false);
+}
+
+async function renderTrip(id, isRefresh) {
+  if (!isRefresh) {
+    viewEl.innerHTML = '';
+    statusEl.textContent = 'Finding direct buses…';
+  }
+  await dataReady;
+  if (id !== screenId) return;
+  if (dataError) {
+    statusEl.textContent = 'Could not load bus data. Try reloading the page.';
+    return;
+  }
+
+  const heading = `
+    <h2>${escapeHtml(tripFromText())} → ${escapeHtml(stopName(trip.to))}</h2>
+    <button class="secondary fav-toggle" type="button" data-trip-edit>Change trip</button>`;
+
+  const boarding = boardingStops();
+  if (boarding.length === 0) {
+    viewEl.innerHTML = heading;
+    statusEl.textContent = `No bus stops within ${ORIGIN_RADIUS} m of you.`;
+    return;
+  }
+
+  const allOptions = findDirectOptions(boarding, alightingStops());
+  // Hide buses that don't run today or have finished for the night, then keep the best few
+  const options = allOptions
+    .filter((option) => runsNow(option.board, option.no))
+    .slice(0, MAX_TRIP_OPTIONS);
+
+  if (options.length === 0) {
+    viewEl.innerHTML = heading + (allOptions.length === 0
+      ? `<div class="empty">
+           <p><strong>No direct bus</strong></p>
+           <p>This trip needs a change of bus, which the app can't plan yet.</p>
+         </div>`
+      : `<div class="empty">
+           <p><strong>No direct bus running now</strong></p>
+           <p>${allOptions.length} direct service${allOptions.length === 1 ? '' : 's'} (e.g. bus
+              ${escapeHtml(allOptions[0].no)}) ${allOptions.length === 1 ? 'goes' : 'go'} there,
+              but not at this time of day.</p>
+         </div>`);
+    statusEl.textContent = '';
+    return;
+  }
+
+  await addLiveTimes(options);
+  if (id !== screenId) return;
+
+  viewEl.innerHTML = heading +
+    `<ul class="list">${options.map(tripCard).join('')}</ul>` +
+    '<p class="hint">"live" ride times come from tracking the actual bus; "~" times are estimates. ' +
+    'Tap an option to see that stop\'s arrivals.</p>';
+  statusEl.textContent = `${options.length} direct option${options.length === 1 ? '' : 's'} · updated ${new Date().toLocaleTimeString()}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -815,6 +1205,36 @@ viewEl.addEventListener('click', (event) => {
     return;
   }
 
+  // Trip planner buttons
+  const pick = target.closest('[data-trip-pick]');
+  if (pick) {
+    const field = pick.dataset.tripPick;
+    if (field === 'from') {
+      trip.from = { kind: 'stop', code: pick.dataset.code };
+    } else {
+      trip.to = pick.dataset.code;
+    }
+    afterTripChange(field);
+    return;
+  }
+  if (target.closest('[data-trip-near]')) {
+    useMyLocationForTrip();
+    return;
+  }
+  if (target.closest('[data-trip-swap]')) {
+    trip = { from: { kind: 'stop', code: trip.to }, to: trip.from.code };
+    planTrip();
+    return;
+  }
+  if (target.closest('[data-trip-go]')) {
+    planTrip();
+    return;
+  }
+  if (target.closest('[data-trip-edit]')) {
+    showTripPlanner();
+    return;
+  }
+
   if (target.closest('[data-back]') && backTo) {
     const goBack = backTo;
     backTo = null;
@@ -830,6 +1250,14 @@ viewEl.addEventListener('change', (event) => {
   if (labelInput.value.trim() === '' || iconNames.includes(labelInput.value.trim())) {
     labelInput.value = ICONS[event.target.value].name;
   }
+});
+
+// Searching for a stop inside the trip planner
+viewEl.addEventListener('submit', (event) => {
+  if (!event.target.matches('form.trip-search')) return;
+  event.preventDefault();
+  const query = event.target.querySelector('input[name="q"]').value.trim();
+  if (query) showTripPlanner({ field: event.target.dataset.field, query });
 });
 
 // Saving the favourite form
@@ -852,6 +1280,7 @@ form.addEventListener('submit', (event) => {
 
 homeButton.addEventListener('click', showHome);
 nearbyButton.addEventListener('click', findNearby);
+document.getElementById('trip').addEventListener('click', openTripPlanner);
 
 // ---------------------------------------------------------------------------
 // Installable app (step 6)
