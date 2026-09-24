@@ -408,7 +408,7 @@ async function showArrivals(id, stopCode, highlightNo, isRefresh) {
       ${backButton()}
       <h2>${escapeHtml(stopName(stopCode))}</h2>
       <p class="subtitle">${stopCode}${stop ? ' · ' + escapeHtml(stop.road) : ''}</p>
-      <button class="secondary" type="button" data-edit-favourite="${stopCode}"
+      <button class="secondary fav-toggle" type="button" data-edit-favourite="${stopCode}"
               data-service="${escapeHtml(highlightNo || '')}">${favButton}</button>`;
 
     if (arrivals.length === 0) {
@@ -427,7 +427,11 @@ async function showArrivals(id, stopCode, highlightNo, isRefresh) {
     statusEl.textContent = `Updated ${new Date().toLocaleTimeString()}`;
   } catch (error) {
     if (id !== screenId) return;
-    statusEl.textContent = 'Could not load arrivals. Please try again. (' + error.message + ')';
+    // `navigator.onLine` is only a hint (it can say "online" on a dead connection),
+    // so the fallback message mentions the connection too
+    statusEl.textContent = navigator.onLine
+      ? 'Could not load arrivals. Check your connection and try again.'
+      : 'You\'re offline. Live times will appear when you reconnect.';
   }
 }
 
@@ -470,7 +474,9 @@ async function renderHome(id, isRefresh) {
   if (id !== screenId) return;
 
   viewEl.innerHTML = favourites.map((fav, i) => favouriteCard(fav, results[i])).join('') + LEGEND;
-  statusEl.textContent = `Updated ${new Date().toLocaleTimeString()}`;
+  statusEl.textContent = results.every((r) => r === null)
+    ? 'Couldn\'t load live times. Check your connection. Retrying every 20 seconds.'
+    : `Updated ${new Date().toLocaleTimeString()}`;
 }
 
 // One card on the home screen: icon, name, stop, then the chosen buses' times.
@@ -846,6 +852,42 @@ form.addEventListener('submit', (event) => {
 
 homeButton.addEventListener('click', showHome);
 nearbyButton.addEventListener('click', findNearby);
+
+// ---------------------------------------------------------------------------
+// Installable app (step 6)
+// ---------------------------------------------------------------------------
+
+// Register the service worker (sw.js), which saves the app for offline use.
+// It only works on http(s) pages, not when index.html is opened straight from a folder.
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  navigator.serviceWorker.register('sw.js').catch(() => {
+    // Not essential: the app still works online without it
+  });
+}
+
+// Chrome, Edge and Android fire `beforeinstallprompt` when the app can be installed.
+// We keep hold of it and show our own "Install app" button.
+// (iPhone Safari doesn't support this; there you use Share → Add to Home Screen.)
+const installButton = document.getElementById('install');
+let installPrompt = null;
+
+window.addEventListener('beforeinstallprompt', (event) => {
+  event.preventDefault(); // don't show the browser's own banner; we have a button
+  installPrompt = event;
+  installButton.hidden = false;
+});
+
+installButton.addEventListener('click', async () => {
+  if (!installPrompt) return;
+  installPrompt.prompt();
+  await installPrompt.userChoice;
+  installPrompt = null; // each prompt can only be used once
+  installButton.hidden = true;
+});
+
+window.addEventListener('appinstalled', () => {
+  installButton.hidden = true;
+});
 
 // Start on the favourites screen
 showHome();

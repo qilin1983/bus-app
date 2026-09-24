@@ -5,6 +5,7 @@
   --text: #1a1d21;
   --muted: #6b7280;
   --accent: #0b6bcb;
+  --on-accent: #ffffff;   /* text on accent-coloured buttons */
   --border: #e3e6ea;
 }
 
@@ -15,6 +16,7 @@
     --text: #eef0f3;
     --muted: #9aa1ab;
     --accent: #5aa9ff;
+    --on-accent: #0b1a2b;  /* dark text: white on light blue is hard to read */
     --border: #2b2f36;
   }
 }
@@ -33,6 +35,15 @@ main {
   margin: 0 auto;
   padding: 16px;
 }
+
+/* When installed on a phone with a notch, keep content clear of it */
+body {
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+           env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+.top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.top button.secondary { width: auto; margin: 0; padding: 6px 12px; font-size: 0.85rem; }
 
 h1 { font-size: 1.5rem; margin: 8px 0 16px; }
 
@@ -57,7 +68,7 @@ button {
   border: 0;
   border-radius: 8px;
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   cursor: pointer;
 }
 
@@ -71,6 +82,7 @@ button.secondary, button.back, button.tab {
 }
 button.secondary { width: 100%; margin-top: 8px; }
 .nav button { flex: 1; }
+button.fav-toggle { margin: 0 0 12px; }
 button.danger {
   width: 100%;
   margin-top: 16px;
@@ -136,7 +148,7 @@ button.danger {
 .icon-choice:has(input:checked), .bus-choice:has(input:checked) {
   border-color: var(--accent);
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 .icon-choice:has(input:focus-visible), .bus-choice:has(input:focus-visible) {
   outline: 2px solid var(--accent);
@@ -152,7 +164,7 @@ h2 { font-size: 1.25rem; margin: 12px 0 2px; }
 /* Direction switcher on a bus route screen */
 .tabs { display: flex; gap: 8px; margin-bottom: 12px; }
 .tabs .tab { flex: 1; font-size: 0.85rem; padding: 8px; }
-.tabs .tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.tabs .tab.active { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
 
 /* All lists (arrivals, stops) share the same card look */
 .list { list-style: none; padding: 0; margin: 0; }

@@ -2,20 +2,35 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- viewport-fit=cover lets the app use the whole screen on phones with a notch -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Bus Arrivals</title>
+  <meta name="description" content="Live Singapore bus arrivals, crowd levels, favourites and last-bus warnings.">
+
+  <!-- Installable app (step 6): name, icons and colours for the home screen -->
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-title" content="Bus Arrivals">
+  <meta name="theme-color" content="#f6f7f9" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#111317" media="(prefers-color-scheme: dark)">
+
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <main>
-    <h1>Bus Arrivals</h1>
+    <header class="top">
+      <h1>Bus Arrivals</h1>
+      <!-- Only shown when the browser says the app can be installed -->
+      <button id="install" class="secondary" type="button" hidden>Install app</button>
+    </header>
 
     <!-- One search box: a 5-digit stop code, a bus number, or part of a stop/road name -->
     <form id="search-form">
       <label for="search">Stop code, bus number or stop name</label>
       <div class="row">
         <input id="search" type="search" autocomplete="off"
-               placeholder="e.g. 83139, 15 or Marine Pde" required>
+               placeholder="e.g. 83139, 15 or Bedok" required>
         <button type="submit">Search</button>
       </div>
     </form>
